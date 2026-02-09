@@ -26,6 +26,165 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - eslint (ESLINT) - v9
 - prettier (PRETTIER) - v3
 
+## Project: scrolling-through
+
+**Application Name:** scrolling-through  
+**Type:** NativePHP Mobile/Desktop Application (iOS, Android, macOS, Windows, Linux)  
+**Tech Stack:** Laravel 12 + Inertia.js v2 + Vue 3 + NativePHP
+
+### Project Overview
+
+scrolling-through is an EPUB reader that transforms books into a social media-style scrollable feed. The MVP focuses on a single-book reading experience with core interactions: favorites, notes, and sharing.
+
+### MVP Scope (4-6 weeks)
+
+**Core Features:**
+
+- Load ONE EPUB file at a time
+- Display book content as a vertical scrollable feed (timeline UI)
+- Chapter cards and paragraph posts
+- User interactions: favorites (toggle), notes (add), share (copy)
+- Progress tracking and saving
+- Auto-resume reading position
+
+**Explicitly Out of Scope for MVP:**
+
+- Multi-book library
+- Advanced statistics/gamification
+- Social sharing beyond clipboard copy
+- Cloud sync
+- Author/cover display
+- Images/tables in content
+
+### Domain Model
+
+**Entities:**
+
+- **Book**: Contains title, file_path, total_posts
+- **Post**: Paragraph or chapter with text, type, position
+- **UserState**: Reading progress, starred posts, notes per user/book
+
+**Value Objects:**
+
+- Note: text + timestamp
+- Progress: current_post_id + posts_read percentage
+
+**Key Business Rules:**
+
+- Only ONE active book at a time per user
+- Posts are immutable once created from EPUB
+- Progress autosaves every 5 seconds or on scroll stop
+- Post considered "read" when 50% visible in viewport
+
+### Mobile UI Architecture
+
+**Platform:** iOS/Android only (no desktop for MVP)
+
+**Pages:**
+
+- `resources/js/pages/BookFeed.vue` - Main reading feed with timeline UI
+- `resources/js/pages/UploadEpub.vue` - EPUB file upload interface
+
+**Components:**
+
+- `resources/js/components/PostCard.vue` - Paragraph display with action buttons (44px touch targets)
+- `resources/js/components/ChapterCard.vue` - Chapter title display with visual distinction
+- `resources/js/components/NoteModal.vue` - Bottom sheet modal for adding notes
+
+**Mobile-First Design Patterns:**
+
+- Minimum 44px touch targets for all interactive elements
+- Bottom-up modal sheets for mobile-native feel
+- Sticky header with progress bar
+- IntersectionObserver for automatic progress tracking (50% visibility threshold)
+- Debounced auto-save every 5 seconds
+- Optimistic UI updates for star/favorite toggles
+
+**State Management:**
+
+- Local reactive state for immediate UI updates
+- **ALWAYS use Inertia for backend communication** (useForm, router, Link component)
+- **NEVER use fetch(), axios, or XMLHttpRequest** - Inertia handles all HTTP requests
+- Progress tracking with IntersectionObserver
+- Auto-save on scroll stop and component unmount
+
+### CRITICAL: Inertia-First Development
+
+**This is an Inertia.js application. You MUST use Inertia for ALL backend communication.**
+
+❌ **NEVER DO THIS:**
+
+```typescript
+// DON'T use fetch()
+const response = await fetch('/api/endpoint', {
+    method: 'POST',
+    body: formData,
+});
+
+// DON'T use axios
+await axios.post('/api/endpoint', data);
+```
+
+✅ **ALWAYS DO THIS:**
+
+```typescript
+// Use Inertia's useForm for form submissions (including file uploads)
+import { useForm } from '@inertiajs/vue3';
+
+const form = useForm({
+    file: null as File | null,
+    name: '',
+});
+
+form.post('/api/endpoint', {
+    forceFormData: true, // For file uploads
+    onSuccess: () => { /* ... */ },
+    onError: (errors) => { /* ... */ },
+});
+
+// Use router for navigation
+import { router } from '@inertiajs/vue3';
+router.visit('/books/123');
+
+// Use Link component for links
+import { Link } from '@inertiajs/vue3';
+<Link href="/books/123">View Book</Link>
+```
+
+**Why:** Inertia handles:
+
+- CSRF tokens automatically
+- Form data serialization (including files)
+- Progress tracking
+- Error handling
+- Response parsing
+- Page state management
+
+**File Uploads:** Use `useForm()` with `forceFormData: true` - Inertia handles multipart/form-data natively.
+
+**Backend:** Controllers return `redirect()` or `Inertia::render()`, NOT JSON responses for Inertia requests.
+
+### Authentication
+
+**MVP Approach:** Auto-authentication for single-user mobile devices
+
+- `AutoAuthenticateUser` middleware auto-logs in first user
+- Creates default user on first launch if needed
+- No login/registration UI required for MVP
+- Standard Laravel session-based authentication
+- Replace with proper mobile auth (OAuth, biometrics) in production
+
+**Middleware Stack:**
+
+```php
+// bootstrap/app.php
+$middleware->web(append: [
+    AutoAuthenticateUser::class,      // Auto-login for MVP
+    HandleInertiaRequests::class,
+    AddLinkHeadersForPreloadedAssets::class,
+]);
+```
+
 ## Skills Activation
 
 This project has domain-specific skills available. You MUST activate the relevant skill whenever you work in that domain—don't wait until you're stuck.
@@ -40,6 +199,110 @@ This project has domain-specific skills available. You MUST activate the relevan
 - You must follow all existing code conventions used in this application. When creating or editing a file, check sibling files for the correct structure, approach, and naming.
 - Use descriptive names for variables and methods. For example, `isRegisteredForDiscounts`, not `discount()`.
 - Check for existing components to reuse before writing a new one.
+
+## Test-Driven Development (TDD)
+
+This project follows TDD principles. **Write tests BEFORE implementing features.**
+
+### TDD Workflow
+
+1. **Red**: Write a failing test that defines desired behavior
+2. **Green**: Write minimal code to make the test pass
+3. **Refactor**: Clean up code while keeping tests green
+
+### Testing Guidelines
+
+- Activate `pest-testing` skill when writing any tests
+- Feature tests for user-facing functionality (controllers, API endpoints)
+- Unit tests for business logic (services, models, value objects)
+- Test file naming: `{FeatureName}Test.php` or `{ClassName}Test.php`
+- Use descriptive test names: `it('can parse an epub file and create posts')`
+- Mock external dependencies (file system, APIs)
+- Use factories for test data
+- Test edge cases and error conditions
+- Aim for high coverage on domain logic (>80%)
+
+### Test Organization
+
+```
+tests/
+├── Feature/           # Controller, integration tests
+│   ├── Books/
+│   └── Reading/
+└── Unit/             # Service, model, value object tests
+    ├── Domain/
+    └── Services/
+```
+
+## Domain-Driven Design (DDD)
+
+This project follows DDD principles to maintain clean, maintainable architecture.
+
+### Directory Structure
+
+```
+app/
+├── Domain/              # Core business logic
+│   ├── Books/
+│   │   ├── Models/     # Book, Post (Eloquent)
+│   │   ├── Services/   # EpubParser, BookService
+│   │   ├── ValueObjects/  # Title, Position
+│   │   └── Events/     # BookParsed, PostCreated
+│   └── Reading/
+│       ├── Models/     # UserState
+│       ├── Services/   # ProgressTracker, NoteService
+│       ├── ValueObjects/  # Note, Progress
+│       └── Events/     # ProgressUpdated, PostStarred
+├── Http/
+│   ├── Controllers/    # Thin controllers, delegate to services
+│   └── Requests/       # Form validation
+└── Services/           # Application services (cross-domain)
+```
+
+### DDD Principles
+
+**Entities** (Models with identity):
+
+- Have unique IDs
+- Mutable state
+- Rich domain behavior
+- Examples: Book, Post, UserState
+
+**Value Objects**:
+
+- Immutable
+- Compared by value, not identity
+- Self-validating
+- Examples: Note, Progress, Position
+
+**Services**:
+
+- Stateless operations
+- Coordinate multiple entities
+- Handle complex business logic
+- Examples: EpubParser, ProgressTracker
+
+**Repositories** (Eloquent Models):
+
+- Data access abstraction
+- Use Eloquent relationships
+- Keep queries in model scopes
+
+**Events**:
+
+- Domain events for decoupling
+- Past tense naming (BookParsed, PostStarred)
+- Use for side effects, logging, notifications
+
+### DDD Best Practices
+
+- Keep controllers thin (< 20 lines per method)
+- Domain logic lives in services and models, NOT controllers
+- Use explicit method names: `toggleFavorite()` not `toggle()`
+- Validate at the boundary (Form Requests, Value Objects)
+- No domain logic in migrations or views
+- Avoid anemic models (models with only getters/setters)
+- Use events for cross-domain communication
 
 ## Verification Scripts
 
@@ -110,7 +373,7 @@ This project has domain-specific skills available. You MUST activate the relevan
 ## Constructors
 
 - Use PHP 8 constructor property promotion in `__construct()`.
-    - <code-snippet>public function __construct(public GitHub $github) { }</code-snippet>
+    - <code-snippet>public function \_\_construct(public GitHub $github) { }</code-snippet>
 - Do not allow empty `__construct()` methods with zero parameters unless the constructor is private.
 
 ## Type Declarations
@@ -150,6 +413,9 @@ protected function isAccessible(User $user, ?string $path = null): bool
 
 - Inertia creates fully client-side rendered SPAs without modern SPA complexity, leveraging existing server-side patterns.
 - Components live in `resources/js/pages` (unless specified in `vite.config.js`). Use `Inertia::render()` for server-side routing instead of Blade views.
+- **CRITICAL:** Use `useForm()`, `router.visit()`, and `<Link>` for ALL backend communication. NEVER use `fetch()`, `axios`, or `XMLHttpRequest`.
+- **File uploads:** Use `useForm()` with `forceFormData: true` - it handles multipart/form-data natively, including in NativePHP mobile environments.
+- **Backend responses:** Controllers should return `redirect()` or `Inertia::render()`, NOT JSON responses for Inertia requests.
 - ALWAYS use `search-docs` tool for version-specific Inertia documentation and updated code examples.
 - IMPORTANT: Activate `inertia-vue-development` when working with Inertia Vue client-side patterns.
 
@@ -275,6 +541,7 @@ Wayfinder generates TypeScript functions for Laravel routes. Import from `@/acti
 # Inertia + Vue
 
 Vue components must have a single root element.
+
 - IMPORTANT: Activate `inertia-vue-development` when working with Inertia Vue client-side patterns.
 
 === tailwindcss/core rules ===
@@ -284,4 +551,4 @@ Vue components must have a single root element.
 - Always use existing Tailwind conventions; check project patterns before adding new ones.
 - IMPORTANT: Always use `search-docs` tool for version-specific Tailwind CSS documentation and updated code examples. Never rely on training data.
 - IMPORTANT: Activate `tailwindcss-development` every time you're working with a Tailwind CSS or styling-related task.
-</laravel-boost-guidelines>
+  </laravel-boost-guidelines>

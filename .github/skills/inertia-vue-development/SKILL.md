@@ -1,10 +1,10 @@
 ---
 name: inertia-vue-development
 description: >-
-  Develops Inertia.js v2 Vue client-side applications. Activates when creating
-  Vue pages, forms, or navigation; using <Link>, <Form>, useForm, or router;
-  working with deferred props, prefetching, or polling; or when user mentions
-  Vue with Inertia, Vue pages, Vue forms, or Vue navigation.
+    Develops Inertia.js v2 Vue client-side applications. Activates when creating
+    Vue pages, forms, or navigation; using <Link>, <Form>, useForm, or router;
+    working with deferred props, prefetching, or polling; or when user mentions
+    Vue with Inertia, Vue pages, Vue forms, or Vue navigation.
 ---
 
 # Inertia Vue Development
@@ -18,6 +18,27 @@ Activate this skill when:
 - Implementing client-side navigation with `<Link>` or `router`
 - Using v2 features: deferred props, prefetching, or polling
 - Building Vue-specific features with the Inertia protocol
+
+## Critical Rules
+
+**NEVER use `fetch()`, `axios`, or `XMLHttpRequest` in Inertia applications.**
+
+This is an Inertia.js application. ALL backend communication MUST use Inertia's native APIs:
+
+✅ **Always use:**
+
+- `useForm()` for forms (including file uploads with `forceFormData: true`)
+- `router.visit()` or `router.get/post/put/patch/delete()` for programmatic navigation
+- `<Link>` component for navigation links
+- `<Form>` component for forms with automatic method handling
+
+❌ **Never use:**
+
+- `fetch('/api/endpoint', { method: 'POST', body: formData })`
+- `axios.post('/api/endpoint', data)`
+- `XMLHttpRequest`
+
+**Why:** Inertia handles CSRF tokens, form serialization, file uploads, progress tracking, error handling, and page state management automatically. Using vanilla HTTP clients breaks this integration and causes bugs (especially with file uploads in NativePHP environments).
 
 ## Documentation
 
@@ -164,6 +185,7 @@ import { Form } from '@inertiajs/vue3'
 
         <div v-if="wasSuccessful">User created!</div>
     </Form>
+
 </template>
 
 </code-snippet>
@@ -209,6 +231,7 @@ import { Form } from '@inertiajs/vue3'
 
         <div v-if="wasSuccessful">Saved!</div>
     </Form>
+
 </template>
 
 </code-snippet>
@@ -244,6 +267,7 @@ import { Form } from '@inertiajs/vue3'
             Submit
         </button>
     </Form>
+
 </template>
 
 </code-snippet>
@@ -287,9 +311,69 @@ function submit() {
             Create User
         </button>
     </form>
+
 </template>
 
 </code-snippet>
+
+### File Uploads with `useForm`
+
+For file uploads, use `forceFormData: true` to ensure proper multipart/form-data encoding:
+
+<code-snippet name="File Upload with useForm" lang="vue">
+
+<script setup>
+import { ref } from 'vue'
+import { useForm } from '@inertiajs/vue3'
+
+const selectedFile = ref<File | null>(null)
+
+const form = useForm({
+    file: null as File | null,
+    name: '',
+})
+
+function handleFileSelect(event: Event) {
+    const target = event.target as HTMLInputElement
+    const file = target.files?.[0]
+    if (file) {
+        selectedFile.value = file
+        form.file = file
+    }
+}
+
+function submit() {
+    form.post('/api/upload', {
+        forceFormData: true, // CRITICAL for file uploads
+        onSuccess: () => {
+            form.reset()
+            selectedFile.value = null
+        },
+        onError: (errors) => {
+            console.error('Upload failed:', errors)
+        },
+    })
+}
+</script>
+
+<template>
+    <form @submit.prevent="submit">
+        <input type="file" @change="handleFileSelect" />
+        <div v-if="selectedFile">Selected: {{ selectedFile.name }}</div>
+        
+        <input type="text" v-model="form.name" placeholder="Name" />
+        
+        <button type="submit" :disabled="form.processing">
+            Upload
+        </button>
+        
+        <div v-if="form.errors.file">{{ form.errors.file }}</div>
+    </form>
+</template>
+
+</code-snippet>
+
+**Important:** The `forceFormData: true` option is essential for file uploads. It ensures Inertia properly serializes the File objects and sends them as multipart/form-data. This works correctly in NativePHP mobile environments, unlike vanilla `fetch()` with `FormData`.
 
 ## Inertia v2 Features
 
@@ -388,6 +472,7 @@ defineProps({
             </template>
         </WhenVisible>
     </div>
+
 </template>
 
 </code-snippet>
