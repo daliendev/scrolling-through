@@ -15,12 +15,12 @@ beforeEach(function () {
 
 it('can update reading progress', function () {
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/progress", [
+        ->post("/books/{$this->book->id}/progress", [
             'current_post_id' => $this->posts[5]->id,
             'posts_read' => 6,
         ]);
 
-    $response->assertSuccessful();
+    $response->assertRedirect();
 
     $state = UserState::where('user_id', $this->user->id)
         ->where('book_id', $this->book->id)
@@ -35,12 +35,12 @@ it('creates user state if not exists', function () {
     expect(UserState::count())->toBe(0);
 
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/progress", [
+        ->post("/books/{$this->book->id}/progress", [
             'current_post_id' => $this->posts[0]->id,
             'posts_read' => 1,
         ]);
 
-    $response->assertSuccessful();
+    $response->assertRedirect();
     expect(UserState::count())->toBe(1);
 });
 
@@ -52,7 +52,7 @@ it('updates existing user state', function () {
     ]);
 
     $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/progress", [
+        ->post("/books/{$this->book->id}/progress", [
             'current_post_id' => $this->posts[7]->id,
             'posts_read' => 8,
         ]);
@@ -66,10 +66,10 @@ it('updates existing user state', function () {
 });
 
 it('requires authentication', function () {
-    $response = $this->postJson("/api/books/{$this->book->id}/progress", [
+    $response = $this->post("/books/{$this->book->id}/progress", [
         'current_post_id' => $this->posts[0]->id,
         'posts_read' => 1,
     ]);
 
-    $response->assertUnauthorized();
+    $response->assertRedirect(route('login'));
 });

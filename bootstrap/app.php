@@ -15,14 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Web routes: auto-auth for mobile MVP
         $middleware->web(append: [
             AutoAuthenticateUser::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
-        ]);
-
-        $middleware->api(append: [
-            AutoAuthenticateUser::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -81,7 +81,7 @@ const toggleStar = (postId: number) => {
 
     // Send to backend
     router.post(
-        `/api/books/${props.book.id}/posts/${postId}/toggle-star`,
+        `/books/${props.book.id}/posts/${postId}/toggle-star`,
         {},
         {
             preserveScroll: true,
@@ -116,8 +116,8 @@ const saveNote = (text: string) => {
     const postId = selectedPostId.value;
 
     router.post(
-        `/api/books/${props.book.id}/posts/${postId}/notes`,
-        { note: text },
+        `/books/${props.book.id}/posts/${postId}/notes`,
+        { text },
         {
             preserveScroll: true,
             preserveState: true,
@@ -134,41 +134,35 @@ const saveNote = (text: string) => {
     );
 };
 
-const sharePost = async (postId: number) => {
-    try {
-        const response = await fetch(`/api/books/${props.book.id}/posts/${postId}/share`, {
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            credentials: 'same-origin',
-        });
+const sharePost = (postId: number) => {
+    // Find the post
+    const post = props.posts.find((p) => p.id === postId);
+    if (!post) return;
 
-        if (!response.ok) throw new Error('Failed to get share text');
+    // Generate share text
+    const shareText = `"${post.text}" — ${props.book.title}`;
 
-        const data = await response.json();
-        const text = data.share_text || '';
-
-        // Copy to clipboard
-        if (navigator.clipboard) {
-            await navigator.clipboard.writeText(text);
-            alert('Quote copied to clipboard!');
-        } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            alert('Quote copied to clipboard!');
-        }
-    } catch (error) {
-        console.error('Share error:', error);
-        alert('Failed to copy quote. Please try again.');
+    // Copy to clipboard
+    if (navigator.clipboard) {
+        navigator.clipboard
+            .writeText(shareText)
+            .then(() => {
+                alert('Quote copied to clipboard!');
+            })
+            .catch(() => {
+                alert('Failed to copy quote. Please try again.');
+            });
+    } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = shareText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Quote copied to clipboard!');
     }
 };
 </script>

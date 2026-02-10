@@ -52,21 +52,25 @@ class UserState extends Model
         return $this->belongsTo(Post::class, 'current_post_id');
     }
 
-    public function toggleStar(int $postId): void
+    public function toggleStar(int $postId): bool
     {
         $starred = $this->starred_post_ids ?? [];
 
         if (in_array($postId, $starred)) {
             $this->starred_post_ids = array_values(array_diff($starred, [$postId]));
+            $this->save();
+
+            return false;
         } else {
             $starred[] = $postId;
             $this->starred_post_ids = $starred;
-        }
+            $this->save();
 
-        $this->save();
+            return true;
+        }
     }
 
-    public function addNote(int $postId, string $text): void
+    public function addNote(int $postId, string $text): array
     {
         $notes = $this->notes ?? [];
 
@@ -74,13 +78,17 @@ class UserState extends Model
             $notes[$postId] = [];
         }
 
-        $notes[$postId][] = [
+        $note = [
             'text' => $text,
             'timestamp' => now()->format('H:i'),
         ];
 
+        $notes[$postId][] = $note;
+
         $this->notes = $notes;
         $this->save();
+
+        return $note;
     }
 
     public function progressPercentage(): int

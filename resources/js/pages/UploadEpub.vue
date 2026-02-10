@@ -1,66 +1,72 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 
 const selectedFile = ref<File | null>(null);
 const error = ref<string | null>(null);
-
-const form = useForm({
-    epub: null as File | null,
-});
+const uploading = ref(false);
 
 const handleFileSelect = (event: Event) => {
-    console.log('📁 File select triggered');
     const target = event.target as HTMLInputElement;
-    console.log('- Input element:', target);
-    console.log('- Files count:', target.files?.length);
-
     const file = target.files?.[0];
 
     if (!file) {
-        console.error('❌ No file selected');
         return;
     }
 
-    console.log('✅ File selected:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        lastModified: file.lastModified,
-    });
-
-    // Validate file type
     if (!file.name.endsWith('.epub')) {
-        console.warn('⚠️ File validation failed: not .epub');
         error.value = 'Please select a valid EPUB file';
         selectedFile.value = null;
-        form.epub = null;
         return;
     }
 
-    console.log('✅ File validated, storing in form');
     error.value = null;
     selectedFile.value = file;
-    form.epub = file;
 };
 
-const handleUpload = () => {
-    if (!form.epub || form.processing) {
+const handleUpload = async () => {
+    if (!selectedFile.value || uploading.value) {
         return;
     }
 
     error.value = null;
+    uploading.value = true;
 
-    form.post('/upload', {
-        forceFormData: true,
-        onSuccess: (response: any) => {
-            console.log('✅ Upload success:', response);
-        },
-        onError: (errors: any) => {
-            console.error('❌ Upload error:', errors);
-            error.value = errors.epub || Object.values(errors)[0] || 'Upload failed';
-        },
-    });
+    try {
+        // Read file as base64 for NativePHP iOS compatibility
+        const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                const base64Data = result.split(',')[1];
+                resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(selectedFile.value!);
+        });
+
+        router.post(
+            '/upload',
+            {
+                epub_name: selectedFile.value.name,
+                epub_size: selectedFile.value.size,
+                epub_type: selectedFile.value.type,
+                epub_data: base64,
+            },
+            {
+                onSuccess: () => {
+                    uploading.value = false;
+                },
+                onError: (errors: any) => {
+                    error.value = errors.epub || Object.values(errors)[0] || 'Upload failed';
+                    uploading.value = false;
+                },
+            },
+        );
+    } catch (err) {
+        error.value = 'Failed to read file';
+        uploading.value = false;
+    }
 };
 
 const triggerFileInput = () => {
@@ -88,7 +94,7 @@ const triggerFileInput = () => {
                 <button
                     type="button"
                     class="w-full rounded-2xl border-2 border-dashed border-gray-300 p-12 transition-colors hover:border-indigo-500 focus:border-transparent focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:border-gray-700 dark:hover:border-indigo-500"
-                    :disabled="form.processing"
+                    :disabled="uploading"
                     @click="triggerFileInput"
                 >
                     <div class="flex flex-col items-center gap-4">
@@ -126,10 +132,10 @@ const triggerFileInput = () => {
                     v-if="selectedFile"
                     type="button"
                     class="mt-6 h-14 w-full rounded-full bg-indigo-600 px-6 text-base font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    :disabled="form.processing || !selectedFile"
+                    :disabled="uploading || !selectedFile"
                     @click="handleUpload"
                 >
-                    <span v-if="form.processing" class="flex items-center justify-center gap-2">
+                    <span v-if="uploading" class="flex items-center justify-center gap-2">
                         <svg class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path

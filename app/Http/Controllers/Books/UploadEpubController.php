@@ -4,59 +4,57 @@ namespace App\Http\Controllers\Books;
 
 use App\Domain\Books\Services\EpubParser;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\UploadEpubRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class UploadEpubController extends Controller
 {
-    public function __invoke(UploadEpubRequest $request, EpubParser $parser): RedirectResponse
+    /**
+     * Upload and parse an EPUB file.
+     *
+     * Supports two upload methods:
+     * 1. Base64 encoded data (NativePHP iOS/Android) - used because multipart/form-data
+     *    body is not transmitted over php:// protocol
+     * 2. Traditional file upload (web browsers) - standard multipart/form-data
+     */
+    public function __invoke(Request $request, EpubParser $parser): RedirectResponse
     {
+        // Validate base64 upload (NativePHP) or traditional file upload (web)
+        $request->validate([
+            'epub' => 'required_without:epub_data|file|mimes:epub,application/epub+zip|max:10240',
+            'epub_data' => 'required_without:epub|string',
+            'epub_name' => 'required_with:epub_data|string',
+            'epub_size' => 'required_with:epub_data|integer|max:10485760', // 10MB in bytes
+            'epub_type' => 'required_with:epub_data|string',
+        ], [
+            'epub.required_without' => 'Please upload an EPUB file',
+            'epub_data.required_without' => 'Please upload an EPUB file',
+            'epub.file' => 'The uploaded file is not valid',
+            'epub.mimes' => 'Only EPUB files are allowed',
+            'epub.max' => 'The file is too large (maximum 10MB)',
+            'epub_size.max' => 'The file is too large (maximum 10MB)',
+        ]);
+
         try {
-            // Log the actual log file location for debugging
-            \Log::info('LOG FILE LOCATION', [
-                'log_path' => storage_path('logs/laravel.log'),
-                'storage_path' => storage_path(),
-            ]);
-
-            $file = $request->file('epub');
-
-            if (! $file) {
-                throw new \Exception('No file uploaded');
+            // Handle base64 upload (NativePHP iOS/Android)
+            if ($request->has('epub_data')) {
+                $fileData = base64_decode($request->input('epub_data'));
+                $filePath = 'books/'.$request->input('epub_name');
+                Storage::disk('local')->put($filePath, $fileData);
+                $absolutePath = Storage::disk('local')->path($filePath);
+            }
+            // Handle traditional file upload (web browser)
+            else {
+                $file = $request->file('epub');
+                $filePath = $file->store('books', 'local');
+                $absolutePath = Storage::disk('local')->path($filePath);
             }
 
-            \Log::info('EPUB upload started', [
-                'original_name' => $file->getClientOriginalName(),
-                'size' => $file->getSize(),
-                'mime' => $file->getMimeType(),
-            ]);
-
-            $filePath = $file->store('books', 'local');
-            \Log::info('File stored', ['path' => $filePath]);
-
-            $absolutePath = Storage::disk('local')->path($filePath);
-            \Log::info('Absolute path resolved', [
-                'absolute_path' => $absolutePath,
-                'exists' => file_exists($absolutePath),
-            ]);
-
-            // Check if ZipArchive is available
-            if (! class_exists('ZipArchive')) {
-                throw new \Exception('ZipArchive extension not available in this environment');
-            }
-
-            \Log::info('Starting EPUB parsing');
             $book = $parser->parse($absolutePath);
-
-            \Log::info('EPUB parsed successfully', ['book_id' => $book->id]);
 
             return redirect()->route('books.show', $book);
         } catch (\Exception $e) {
-            \Log::error('EPUB upload failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
             return back()->withErrors([
                 'epub' => 'Failed to parse EPUB file: '.$e->getMessage(),
             ]);

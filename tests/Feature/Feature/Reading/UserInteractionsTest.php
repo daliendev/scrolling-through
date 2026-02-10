@@ -19,10 +19,9 @@ beforeEach(function () {
 
 it('can toggle favorite on a post', function () {
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
 
-    $response->assertSuccessful()
-        ->assertJson(['starred' => true]);
+    $response->assertRedirect();
 
     $this->state->refresh();
     expect($this->state->starred_post_ids)->toContain($this->post->id);
@@ -32,10 +31,9 @@ it('can untoggle favorite on a post', function () {
     $this->state->toggleStar($this->post->id);
 
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
 
-    $response->assertSuccessful()
-        ->assertJson(['starred' => false]);
+    $response->assertRedirect();
 
     $this->state->refresh();
     expect($this->state->starred_post_ids)->not->toContain($this->post->id);
@@ -43,12 +41,11 @@ it('can untoggle favorite on a post', function () {
 
 it('can add a note to a post', function () {
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/notes", [
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/notes", [
             'text' => 'Great paragraph!',
         ]);
 
-    $response->assertSuccessful()
-        ->assertJsonStructure(['note' => ['text', 'timestamp']]);
+    $response->assertRedirect();
 
     $this->state->refresh();
     expect($this->state->notes)
@@ -59,42 +56,27 @@ it('can add a note to a post', function () {
 
 it('validates note text is required', function () {
     $response = $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/notes", [
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/notes", [
             'text' => '',
         ]);
 
-    $response->assertUnprocessable()
-        ->assertJsonValidationErrors(['text']);
+    $response->assertSessionHasErrors(['text']);
 });
 
 it('can get share text for a post', function () {
-    $post = Post::factory()->create([
-        'book_id' => $this->book->id,
-        'text' => 'This is a wonderful quote.',
-    ]);
-
-    $response = $this->actingAs($this->user)
-        ->getJson("/api/books/{$this->book->id}/posts/{$post->id}/share");
-
-    $response->assertSuccessful()
-        ->assertJson([
-            'share_text' => '"This is a wonderful quote." — '.$this->book->title,
-        ]);
+    // Share is now handled client-side in Vue, no backend route needed
+    $this->markTestSkipped('Share functionality moved to frontend client-side');
 });
 
 it('requires authentication for all interactions', function () {
     $endpoints = [
-        ['method' => 'post', 'url' => "/api/books/{$this->book->id}/posts/{$this->post->id}/toggle-star"],
-        ['method' => 'post', 'url' => "/api/books/{$this->book->id}/posts/{$this->post->id}/notes", 'data' => ['text' => 'note']],
-        ['method' => 'get', 'url' => "/api/books/{$this->book->id}/posts/{$this->post->id}/share"],
+        ['method' => 'post', 'url' => "/books/{$this->book->id}/posts/{$this->post->id}/toggle-star"],
+        ['method' => 'post', 'url' => "/books/{$this->book->id}/posts/{$this->post->id}/notes", 'data' => ['text' => 'note']],
     ];
 
     foreach ($endpoints as $endpoint) {
-        $response = $endpoint['method'] === 'get'
-            ? $this->getJson($endpoint['url'])
-            : $this->postJson($endpoint['url'], $endpoint['data'] ?? []);
-
-        $response->assertUnauthorized();
+        $response = $this->post($endpoint['url'], $endpoint['data'] ?? []);
+        $response->assertRedirect(route('login'));
     }
 });
 
@@ -103,7 +85,7 @@ it('creates user state if not exists when toggling star', function () {
     expect(UserState::count())->toBe(0);
 
     $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/toggle-star");
 
     expect(UserState::count())->toBe(1);
 });
@@ -113,7 +95,7 @@ it('creates user state if not exists when adding note', function () {
     expect(UserState::count())->toBe(0);
 
     $this->actingAs($this->user)
-        ->postJson("/api/books/{$this->book->id}/posts/{$this->post->id}/notes", [
+        ->post("/books/{$this->book->id}/posts/{$this->post->id}/notes", [
             'text' => 'Note text',
         ]);
 
