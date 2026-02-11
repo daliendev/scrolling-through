@@ -270,6 +270,9 @@ class EpubParser
             $this->parseHtmlContent($html);
         }
 
+        // Chunk posts for optimal reading
+        $this->chunkPosts();
+
         // If no posts found, create a fallback
         if (empty($this->posts)) {
             $this->posts[] = [
@@ -278,6 +281,121 @@ class EpubParser
                 'position' => 0,
             ];
         }
+    }
+
+    /**
+     * Chunk posts for optimal fullscreen reading (250-500 chars per post)
+     * - Combines short paragraphs (< 250 chars)
+     * - Splits long paragraphs (> 500 chars) at sentence boundaries
+     * - Preserves chapters as separate posts
+     */
+    protected function chunkPosts(): void
+    {
+        $chunked = [];
+        $buffer = '';
+        $bufferedPosts = [];
+
+        foreach ($this->posts as $post) {
+            // Chapters always stay separate
+            if ($post['type'] === 'chapter') {
+                // Flush buffer if any
+                if (! empty($buffer)) {
+                    $chunked[] = $this->createChunkedPost($buffer, 'paragraph');
+                    $buffer = '';
+                    $bufferedPosts = [];
+                }
+
+                $chunked[] = $post;
+
+                continue;
+            }
+
+            // For paragraphs, add to buffer
+            $text = $post['text'];
+            $textLength = strlen($text);
+
+            // If adding this text keeps us under 500 chars, add it
+            if (strlen($buffer) + $textLength + 2 < 500) { // +2 for double newline
+                $buffer .= ($buffer ? "\n\n" : '').$text;
+                $bufferedPosts[] = $post;
+
+                continue;
+            }
+
+            // Buffer would exceed 500 chars
+            // If buffer has content and is >= 250 chars, flush it
+            if (! empty($buffer) && strlen($buffer) >= 250) {
+                $chunked[] = $this->createChunkedPost($buffer, 'paragraph');
+                $buffer = '';
+                $bufferedPosts = [];
+            }
+
+            // Handle current text
+            if ($textLength > 500) {
+                // Split long paragraph at sentence boundaries
+                $sentences = $this->splitIntoSentences($text);
+                $tempBuffer = '';
+
+                foreach ($sentences as $sentence) {
+                    if (strlen($tempBuffer) + strlen($sentence) + 1 > 500 && ! empty($tempBuffer)) {
+                        // Flush temp buffer
+                        $chunked[] = $this->createChunkedPost($tempBuffer, 'paragraph');
+                        $tempBuffer = '';
+                    }
+
+                    $tempBuffer .= ($tempBuffer ? ' ' : '').$sentence;
+                }
+
+                // Flush remaining
+                if (! empty($tempBuffer)) {
+                    if (strlen($tempBuffer) < 250 && empty($buffer)) {
+                        // Start new buffer if too short
+                        $buffer = $tempBuffer;
+                    } else {
+                        $chunked[] = $this->createChunkedPost($tempBuffer, 'paragraph');
+                    }
+                }
+            } else {
+                // Text fits, start new buffer
+                $buffer = $text;
+                $bufferedPosts = [$post];
+            }
+        }
+
+        // Flush remaining buffer
+        if (! empty($buffer)) {
+            $chunked[] = $this->createChunkedPost($buffer, 'paragraph');
+        }
+
+        // Update positions
+        foreach ($chunked as $index => $post) {
+            $chunked[$index]['position'] = $index;
+        }
+
+        $this->posts = $chunked;
+    }
+
+    /**
+     * Create a chunked post
+     */
+    protected function createChunkedPost(string $text, string $type): array
+    {
+        return [
+            'text' => $text,
+            'type' => $type,
+            'position' => 0, // Will be updated later
+        ];
+    }
+
+    /**
+     * Split text into sentences
+     */
+    protected function splitIntoSentences(string $text): array
+    {
+        // Split on sentence boundaries: . ! ? followed by space or end
+        $sentences = preg_split('/(?<=[.!?])\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
+
+        return $sentences ?: [$text];
     }
 
     /**
